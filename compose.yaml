@@ -1,0 +1,109 @@
+name: vantage
+
+# Development stack. Source is bind-mounted so edits are live; everything else
+# — PHP, Postgres, Redis, Node — lives in a container. Nothing needs to be
+# installed on the host except Docker itself.
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    target: runtime
+  image: vantage-app:dev
+  env_file:
+    - .env
+  volumes:
+    - .:/app
+    - app_storage:/app/storage/framework
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *app
+    environment:
+      CONTAINER_ROLE: app
+      SERVER_NAME: ":80"
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "${APP_PORT:-8000}:80"
+
+  worker:
+    <<: *app
+    environment:
+      CONTAINER_ROLE: worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+  scheduler:
+    <<: *app
+    environment:
+      CONTAINER_ROLE: scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-vantage}
+      POSTGRES_USER: ${DB_USERNAME:-vantage}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${DB_FORWARD_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-vantage} -d ${DB_DATABASE:-vantage}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    # noeviction matters: Redis holds the queue. Evicting keys under memory
+    # pressure would silently drop queued jobs.
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  vite:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    ports:
+      - "${VITE_PORT:-5173}:5173"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  node_modules:
+  app_storage:

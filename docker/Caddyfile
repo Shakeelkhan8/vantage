@@ -1,0 +1,37 @@
+{
+	{$CADDY_GLOBAL_OPTIONS}
+
+	frankenphp
+
+	# php_server has to win over file_server for the front-controller to run.
+	order php_server before file_server
+}
+
+# Dev sets SERVER_NAME to ":80" (plain HTTP, no cert dance).
+# Prod sets it to the real hostname and Caddy provisions Let's Encrypt itself.
+{$SERVER_NAME:localhost} {
+	root /app/public
+
+	encode zstd gzip
+
+	log {
+		output stderr
+		format console
+	}
+
+	# Livewire uploads and CV files.
+	request_body {
+		max_size 25MB
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	php_server {
+		index index.php
+	}
+}

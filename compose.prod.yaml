@@ -1,0 +1,129 @@
+name: vantage
+
+# Production stack for a single small VPS.
+#
+#   docker compose -f compose.prod.yaml up -d --build
+#
+# Differences from the dev stack: no bind mount (the image is the artifact),
+# no Vite, Postgres is not published to the host, Caddy owns real TLS, and
+# every service carries a memory ceiling so one runaway worker cannot take the
+# box down.
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    target: runtime
+  image: vantage-app:latest
+  env_file:
+    - .env
+  environment:
+    APP_ENV: production
+    APP_DEBUG: "false"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: always
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  app:
+    <<: *app
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      CONTAINER_ROLE: app
+      # Real hostname — Caddy provisions Let's Encrypt for it automatically.
+      SERVER_NAME: ${APP_DOMAIN}
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - app_storage:/app/storage
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  worker:
+    <<: *app
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      CONTAINER_ROLE: worker
+    volumes:
+      - app_storage:/app/storage
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  scheduler:
+    <<: *app
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      CONTAINER_ROLE: scheduler
+    volumes:
+      - app_storage:/app/storage
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Deliberately not published. Reach it with `docker compose exec postgres psql`.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  redis:
+    image: redis:8-alpine
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+
+volumes:
+  pgdata:
+  redisdata:
+  app_storage:
+  caddy_data:
+  caddy_config:
