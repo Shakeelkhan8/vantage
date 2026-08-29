@@ -17,8 +17,19 @@ export default defineConfig({
         tailwindcss(),
     ],
     server: {
+        // Vite runs inside a container; the browser reaches it on the host.
+        host: '0.0.0.0',
+        port: 5173,
+        strictPort: true,
+        hmr: {
+            host: 'localhost',
+        },
         watch: {
-            ignored: ['**/storage/framework/views/**'],
+            // inotify events do not cross a Windows bind mount, so without
+            // polling the dev server never sees an edit and HMR looks broken.
+            usePolling: true,
+            interval: 400,
+            ignored: ['**/storage/framework/views/**', '**/vendor/**', '**/node_modules/**'],
         },
     },
 });

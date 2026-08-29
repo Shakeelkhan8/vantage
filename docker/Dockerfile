@@ -53,6 +53,7 @@ RUN install-php-extensions \
         bcmath \
         opcache \
         pcntl \
+        posix \
         sockets
 
 # postgresql-client gives the entrypoint pg_isready; bash for the entrypoint itself.

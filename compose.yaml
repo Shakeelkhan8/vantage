@@ -94,7 +94,7 @@ services:
   vite:
     image: node:22-alpine
     working_dir: /app
-    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
     volumes:
       - .:/app
       - node_modules:/app/node_modules
