@@ -56,8 +56,14 @@ RUN install-php-extensions \
         posix \
         sockets
 
-# postgresql-client gives the entrypoint pg_isready; bash for the entrypoint itself.
-RUN apk add --no-cache bash postgresql-client tzdata
+# postgresql-client gives the entrypoint pg_isready; bash for the entrypoint
+# itself; git and unzip are what Composer reaches for when installing packages.
+RUN apk add --no-cache bash postgresql-client tzdata git unzip
+
+# Composer lives in the runtime image too. In dev the source tree is bind-mounted
+# over /app, which hides the vendor/ baked into the image — so a fresh clone has
+# to be able to install dependencies from inside the container.
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
