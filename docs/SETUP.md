@@ -144,6 +144,16 @@ First build is 3–6 minutes. Then generate the application key:
 docker compose exec app php artisan key:generate
 ```
 
+Then create your account. There is no public sign-up, so without this there
+is a login screen you cannot get past:
+
+```bash
+docker compose exec app php artisan vantage:install
+```
+
+It asks for a name, an email and a password (minimum 12 characters), and
+creates your first workspace.
+
 A fresh clone has no `vendor/`, and the dev stack bind-mounts your source over
 the image's copy. The entrypoint detects this and runs `composer install`
 inside the app container on first boot — so the first `up` takes an extra
@@ -167,6 +177,8 @@ docker compose exec app php artisan migrate
 | Vite | <http://localhost:5173> | dev server responds |
 | Database | `docker compose exec postgres psql -U vantage -d vantage -c '\dt'` | table list, no connection error |
 | Redis | `docker compose exec redis redis-cli ping` | `PONG` |
+| Tests | `docker compose exec app php artisan test` | 26 passing |
+| Sign in | <http://localhost:8000/login> | the account from `vantage:install` works |
 | Logs clean | `docker compose logs --tail=50` | no fatal errors |
 
 If the app container restarts in a loop, `docker compose logs app` is the first
@@ -176,29 +188,35 @@ place to look — the entrypoint logs every step it takes.
 
 ## 7. Where the project actually is
 
-**Two commits. P0 is partially done.** Nothing has been run yet — Docker was
-never installed on the old laptop, so **the container stack has never been
-built or started.** Treat your first `docker compose up` as its first real
-test and expect to fix something.
+**P0 is complete. P1 has not started.**
 
-Built:
+**The container stack has never been built or started.** Docker was never
+installed on the old laptop, so everything below was written and tested
+outside it. Treat your first `docker compose up` as its first real test and
+expect to fix something.
 
-- Laravel 13.29 / PHP 8.4, Livewire 4.4, Horizon 5.48, Anthropic SDK 0.44
+Built and tested:
+
+- Laravel 13.29 / PHP 8.4, Livewire 4.4, Horizon 5.48, Anthropic SDK 0.44,
+  smalot/pdfparser 2.12
 - Dev and production compose stacks, FrankenPHP runtime, entrypoint, Makefile
 - `config/vantage.php` — model routing, batch flag, monthly budget ceiling,
   per-model pricing table
 - `App\Sources\Contracts\JobSource`, `RawPosting`, `SourceCursor`
+- **Workspace tenancy** — `workspaces`, `workspace_user`, `WorkspaceScope`,
+  `BelongsToWorkspace`, `WorkspaceContext`, `current_workspace_id()`
+- **Auth** — throttled Livewire login, no public sign-up, `vantage:install`
+- **Versioned CV ingest** — immutable `profile_versions`, content hashing,
+  PDF/TXT/Markdown extraction
 
-Not built yet, and the rest of P0:
+**26 tests, 45 assertions, passing — on SQLite.** The migrations have never
+run against PostgreSQL, and `jsonb` is the one column type where the two
+differ meaningfully. Watch the first `migrate` closely.
 
-- Workspace tenancy — migrations, `workspace_user` pivot, global scope,
-  `current_workspace_id()`
-- Auth
-- Profile / CV ingest with versioning. The versioning matters: it is the
-  scoring cache key, so getting it wrong means re-paying for every score.
-
-After that, P1 is the source adapters, starting with the ATS boards.
-`docs/PLAN.md` has the full phase breakdown.
+Next, P1: the source adapters, starting with `AtsBoardSource`. The
+Greenhouse, Lever, Ashby and Workable board endpoints need no credentials and
+give the cleanest signal for a watchlist of target companies, so that one
+earns its place first. `docs/PLAN.md` has the full phase breakdown.
 
 ---
 
