@@ -1,0 +1,90 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      - run: vendor/bin/pint --test
+
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # SQLite is what phpunit.xml uses locally. PostgreSQL is what the
+        # container runs in production, and the migrations must pass there too.
+        database: [sqlite, pgsql]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vantage_test
+          POSTGRES_USER: vantage
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vantage"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, pdo_pgsql
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: composer install --no-interaction --prefer-dist --no-progress
+
+      # Pages render through @vite, so the manifest must exist before feature tests run.
+      - run: npm ci
+      - run: npm run build
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Run tests (SQLite)
+        if: matrix.database == 'sqlite'
+        run: php artisan test
+
+      # Real environment variables take precedence over the <env> entries in phpunit.xml.
+      - name: Run tests (PostgreSQL)
+        if: matrix.database == 'pgsql'
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: vantage_test
+          DB_USERNAME: vantage
+          DB_PASSWORD: secret
+        run: php artisan test
