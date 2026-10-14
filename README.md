@@ -1,5 +1,7 @@
 # Vantage
 
+[![tests](https://github.com/Shakeelkhan8/vantage/actions/workflows/tests.yml/badge.svg)](https://github.com/Shakeelkhan8/vantage/actions/workflows/tests.yml)
+
 A job-hunting engine that ingests postings from many sources, deduplicates
 them, filters out the noise deterministically, and scores what survives against
 a candidate profile using Claude.
